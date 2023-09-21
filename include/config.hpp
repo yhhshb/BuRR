@@ -5,10 +5,20 @@
 
 #pragma once
 
+// requires xxhash3, i.e. libxxhash v0.8.0 or later
+// available from https://github.com/Cyan4973/xxHash/releases/tag/v0.8.0
+#define XXH_INLINE_ALL
+extern "C" {
+#include <xxhash.h>
+}
+
 #include "../bundled/tlx/include/likely.hpp"
 #include "../bundled/tlx/include/logger.hpp"
 #include "../bundled/tlx/include/wrap_unprintable.hpp"
 #include "../bundled/tlx/include/integer_log2.hpp"
+
+#include "../bundled/DySECT/cuckoo_simple.hpp"
+#include "../bundled/pcg_random.hpp"
 
 #define RIBBON_USE_STD_SORT
 
@@ -18,17 +28,9 @@
 #include <ips2ra.hpp>
 #endif
 
-#include "../bundled/pcg_random.hpp"
-
 #include <cstdint>
 #include <iomanip>
 #include <utility>
-
-// requires xxhash3, i.e. libxxhash v0.8.0 or later
-// available from https://github.com/Cyan4973/xxHash/releases/tag/v0.8.0
-#define XXH_INLINE_ALL
-#include <xxhash.h>
-#include "../bundled/DySECT/cuckoo_simple.hpp"
 
 namespace std {
 ostream &operator<<(ostream &os, const __uint128_t &v);
