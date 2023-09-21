@@ -8,9 +8,7 @@
 // requires xxhash3, i.e. libxxhash v0.8.0 or later
 // available from https://github.com/Cyan4973/xxHash/releases/tag/v0.8.0
 #define XXH_INLINE_ALL
-extern "C" {
 #include <xxhash.h>
-}
 
 #include "../bundled/tlx/include/likely.hpp"
 #include "../bundled/tlx/include/logger.hpp"
