@@ -6,11 +6,8 @@
 #pragma once
 
 #include "config.hpp"
-#include "pcg-cpp/include/pcg_random.hpp"
 #include "rocksdb/coding.h"
 #include "rocksdb/fastrange.h"
-
-#include <tlx/math/integer_log2.hpp>
 
 #include <utility>
 

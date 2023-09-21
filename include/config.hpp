@@ -5,7 +5,20 @@
 
 #pragma once
 
-#include <tlx/math/integer_log2.hpp>
+#include "../bundled/tlx/include/likely.hpp"
+#include "../bundled/tlx/include/logger.hpp"
+#include "../bundled/tlx/include/wrap_unprintable.hpp"
+#include "../bundled/tlx/include/integer_log2.hpp"
+
+#define RIBBON_USE_STD_SORT
+
+#ifndef RIBBON_USE_STD_SORT
+// Use in-place super-scalar radix sorter ips2ra, which is around 3x faster for
+// the inputs used here
+#include <ips2ra.hpp>
+#endif
+
+#include "../bundled/pcg_random.hpp"
 
 #include <cstdint>
 #include <iomanip>
@@ -15,12 +28,10 @@
 // available from https://github.com/Cyan4973/xxHash/releases/tag/v0.8.0
 #define XXH_INLINE_ALL
 #include <xxhash.h>
+#include "../bundled/DySECT/cuckoo_simple.hpp"
 
 namespace std {
-ostream &operator<<(ostream &os, const __uint128_t &v) {
-    return os << "0x" << ::std::hex << static_cast<uint64_t>(v >> 64)
-              << ::std::setw(16) << static_cast<uint64_t>(v) << ::std::dec;
-}
+ostream &operator<<(ostream &os, const __uint128_t &v);
 } // namespace std
 
 namespace ribbon {

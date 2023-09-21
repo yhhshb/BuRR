@@ -2,11 +2,11 @@
 //  All Rights Reserved.  This source code is licensed under the Apache 2.0
 //  License (found in the LICENSE file in the root directory).
 
-#include "ribbon.hpp"
-#include "rocksdb/stop_watch.h"
+#include "../include/ribbon.hpp"
+#include "../include/rocksdb/stop_watch.h"
 
-#include <tlx/cmdline_parser.hpp>
-#include <tlx/logger.hpp>
+#include "../bundled/tlx/include/cmdline_parser.hpp"
+#include "../bundled/tlx/include/logger.hpp"
 
 #include <atomic>
 #include <cstdlib>

@@ -8,8 +8,6 @@
 #include "config.hpp"
 #include "rocksdb/math.h"
 
-#include <tlx/logger.hpp>
-
 #include <array>
 #include <cassert>
 #include <memory>

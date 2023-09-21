@@ -5,19 +5,10 @@
 
 #pragma once
 
-#include "minimal_hasher.hpp"
 #include "rocksdb/math.h"
 #include "rocksdb/stop_watch.h"
+#include "minimal_hasher.hpp"
 #include "sorter.hpp"
-
-#include <tlx/logger.hpp>
-#include <tlx/logger/wrap_unprintable.hpp>
-
-#ifndef RIBBON_USE_STD_SORT
-// Use in-place super-scalar radix sorter ips2ra, which is around 3x faster for
-// the inputs used here
-#include <ips2ra.hpp>
-#endif
 
 #include <algorithm>
 #include <cassert>

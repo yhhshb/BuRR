@@ -2,15 +2,10 @@
 //  All Rights Reserved.  This source code is licensed under the Apache 2.0
 //  License (found in the LICENSE file in the root directory).
 
-#include "sorter.hpp"
+#include "../include/config.hpp"
+#include "../include/sorter.hpp"
 
-#ifndef RIBBON_USE_STD_SORT
-// Use in-place super-scalar radix sorter ips2ra, which is around 3x faster for
-// the inputs used here
-#include <ips2ra.hpp>
-#endif
-
-#include <bits/stdint-uintn.h>
+#include <stdint.h>
 
 #include <algorithm>
 #include <functional>

@@ -14,8 +14,6 @@
 #include "storage.hpp"
 #include "thresh_compress.hpp"
 
-#include <tlx/logger.hpp>
-
 #include <iostream>
 #include <type_traits>
 

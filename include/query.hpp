@@ -7,8 +7,7 @@
 
 #include "rocksdb/math.h"
 
-#include <tlx/logger.hpp>
-#include <tlx/logger/wrap_unprintable.hpp>
+#include "config.hpp"
 
 #include <bitset>
 #include <cstddef>

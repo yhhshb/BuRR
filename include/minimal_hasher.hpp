@@ -6,7 +6,7 @@
 
 #include "rocksdb/fastrange.h"
 
-#include <bits/stdint-uintn.h>
+#include <stdint.h>
 
 #include <utility>
 
