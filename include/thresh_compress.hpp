@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "config.hpp"
 #include "permute.hpp"
 
 #include <memory>

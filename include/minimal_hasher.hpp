@@ -7,7 +7,6 @@
 #include "rocksdb/fastrange.h"
 
 #include <stdint.h>
-
 #include <utility>
 
 namespace ribbon {

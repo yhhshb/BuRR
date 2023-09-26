@@ -7,7 +7,7 @@
 
 #include "rocksdb/math.h"
 
-#include "config.hpp"
+#include "burr_config.hpp"
 
 #include <bitset>
 #include <cstddef>

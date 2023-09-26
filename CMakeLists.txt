@@ -37,16 +37,7 @@ if (UNIX)
   endif()
 endif()
 
-# fetch latest argparse
-# include(FetchContent)
-# FetchContent_Declare(
-#     ips2ra
-#     GIT_REPOSITORY https://github.com/ips4o/ips2ra.git
-# )
-# FetchContent_MakeAvailable(ips2ra)
-
 include_directories(${PROJECT_SOURCE_DIR})
-# include_directories(${PROJECT_SOURCE_DIR}/bundled/biolib)
 
 set(TLX_SOURCES
   bundled/tlx/src/cmdline_parser.cpp
@@ -55,10 +46,13 @@ set(TLX_SOURCES
 )
 
 set(BURR_SOURCES
-  src/config.cpp
+  src/burr_config.cpp
   src/sorter.cpp
 )
 
-# add_subdirectory(bundled/biolib)
-add_executable(ribbon targets/ribbon.cpp ${BURR_SOURCES} ${TLX_SOURCES})
-target_link_libraries(ribbon rt)
+add_library(BuRR ${BURR_SOURCES})
+
+if (MAKE_TESTS)
+  add_executable(ribbon targets/ribbon.cpp ${BURR_SOURCES} ${TLX_SOURCES})
+  target_link_libraries(ribbon rt)
+endif()

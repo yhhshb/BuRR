@@ -5,7 +5,6 @@
 #pragma once
 
 #include "backsubst.hpp"
-#include "config.hpp"
 #include "construction.hpp"
 #include "hasher.hpp"
 #include "permute.hpp"

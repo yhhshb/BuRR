@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "config.hpp"
+#include "burr_config.hpp"
 #include "rocksdb/math.h"
 
 #include <array>

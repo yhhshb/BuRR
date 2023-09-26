@@ -1,4 +1,4 @@
-#include "../include/config.hpp"
+#include "../include/burr_config.hpp"
 
 namespace std {
 ostream &operator<<(ostream &os, const __uint128_t &v) {

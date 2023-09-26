@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "config.hpp"
+#include "burr_config.hpp"
 #include "rocksdb/coding.h"
 #include "rocksdb/fastrange.h"
 

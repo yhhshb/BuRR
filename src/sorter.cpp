@@ -2,7 +2,7 @@
 //  All Rights Reserved.  This source code is licensed under the Apache 2.0
 //  License (found in the LICENSE file in the root directory).
 
-#include "../include/config.hpp"
+#include "../include/burr_config.hpp"
 #include "../include/sorter.hpp"
 
 #include <stdint.h>
