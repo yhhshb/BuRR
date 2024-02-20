@@ -1,26 +1,34 @@
 #ifndef BURR_HPP
 #define BURR_HPP
 
-#include <cstdint>
-#include <algorithm>
-#include <iterator>
-#include <vector>
+// #include <algorithm>
+// #include <cstdint>
 #include <string>
+#include <vector>
+#include <cassert>
+
 #include "constants.hpp"
 
 namespace ribbon {
 
-class base
+class option_t 
 {
-
+    public:
+        double epsilon;
+        std::size_t layers;
+        uint64_t seed;
+        std::string tmp_dir;
+        std::size_t max_ram;
+        std::size_t nthreads;
+        std::size_t verbose;
+        bool check;
 };
 
-#define FTMPL_CLASS_HEADER template <typename Hasher, typename Iterator, typename RibbonType>
-#define FTMPL_CLASS_HEADER_HEADER template <typename Hasher, typename Iterator, typename RibbonType = uint64_t>
-#define FTMPL_METHOD_HEADER filter<Hasher, Iterator, RibbonType>
+#define CLASS_HEADER template <typename Iterator, typename Hasher>
+#define METHOD_HEADER BuRR<Iterator, Hasher>
 
-FTMPL_CLASS_HEADER
-class filter : base
+CLASS_HEADER
+class BuRR
 {
     public:
         using key_type = typename Iterator::value_type::first_type;
@@ -33,26 +41,9 @@ class filter : base
         using reference = value_type&;
         using const_reference = const value_type&;
 
-        class option_t
-        {
-            public:
-                option_t() 
-                    : seed(42), 
-                      load_factor(0.95),
-                      normal_threshold(true),
-                      check(false),
-                      verbose(false)
-                {}
-                std::size_t seed;
-                double load_factor; // remember: bumping deals with collisions so load factor can be < 1
-                std::size_t max_ram,
-                std::string tmp_dir,
-                bool normal_threshold,
-                bool check;
-                bool verbose;
-        }
-
-        filter(Iterator start, Iterator stop, option_t const& options);
+        BuRR(const option_t& build_options);
+        void build(Iterator start, Iterator stop);
+        void build(Iterator start, std::size_t n);
 
         std::size_t count() const noexcept; // returns the number of elements matching specific key
 
@@ -63,40 +54,43 @@ class filter : base
         bool contains(K const& key) const; // checks if the container contains element with specific key
 
     private:
-        option_t opts;
+        void build_layer(emem::external_memory_vector<value_type>& pairs);
         std::size_t bucket_size;
-        void build(Iterator start, Iterator stop, option_t const& options);
-        void build_layer(external_memory_vector<value_type>& pairs);
-
 };
 
-FTMPL_CLASS_HEADER 
-FTMPL_METHOD_HEADER::filter(Iterator start, Iterator stop, option_t const& options)
-    : opts(options)
-{
-    auto a = tlx::integer_log2_ceil(coeff_bits);
-    auto b = ((mode == opts.normal_threshold ? 2 : 4) * a);
-    auto c = tlx::integer_log2_floor(coeff_bits * coeff_bits / b); // w * w / (factor * log(w))
-    bucket_size = std::size_t(1) << c; // round down to next power of two
-    build(start, stop);
-}
 
-FTMPL_CLASS_HEADER 
-FTMPL_METHOD_HEADER::build(Iterator start, Iterator stop)
-    : opts(options)
+
+CLASS_HEADER
+void 
+METHOD_HEADER::build(Iterator start, Iterator stop)
 {
+    auto bit_width = ::bit::size<Hasher::hash_t>();
+    auto a = std::ceil(std::log2(bit_width));
+    assert(a >= 0);
+    auto b = ((mode == opts.normal_threshold ? 2 : 4) * a);
+    auto c = std::floor(std::log2(((bit_width * bit_width) / b))); // w * w / (factor * log(w))
+    assert(c >=0);
+    bucket_size = std::size_t(1) << c; // round down to next power of two
+
     std::string external_key_storage = join_path(opts.tmp_dir, random_name());
     external_memory_vector<value_type> hashed_keys(opts.max_ram, external_key_storage);
-    std::transform(start, stop, std::back_inserter(hashed_keys), [](auto &v) {return std::make_pair(Hasher::hash(v.first, opts.seed), v.second);})
+    std::transform(start, stop, std::back_inserter(hashed_keys), [](auto &v) {return std::make_pair(Hasher::hash(v.first, opts.seed), v.second);});
 
     do {
         build_layer(hashed_keys);
     } while();
 }
 
-FTMPL_CLASS_HEADER
+CLASS_HEADER
 void 
-FTMPL_METHOD_HEADER::build_layer(external_memory_vector<value_type>& pairs)
+METHOD_HEADER::build(Iterator start, std::size_t n)
+{
+    build(iterators::size_iterator(start, 0), iterators::size_iterator(start, n));
+}
+
+CLASS_HEADER
+void 
+METHOD_HEADER::build_layer(emem::external_memory_vector<value_type>& pairs)
 {
     // banding add range (recursion)
     
@@ -108,14 +102,27 @@ FTMPL_METHOD_HEADER::build_layer(external_memory_vector<value_type>& pairs)
     }
 }
 
+#undef CLASS_HEADER
+#undef METHOD_HEADER
+
 } // namespace ribbon
 
 #endif // BURR_HPP
 
-template <typename BandingStorage, typename Hasher, typename Iterator,
-          typename BumpStorage = std::vector<typename std::iterator_traits<Iterator>::value_type>>
-bool BandingAddRange(BandingStorage *bs, Hasher &hasher, Iterator begin,
-                     Iterator end, BumpStorage *bump_vec) {
+
+template <
+    typename BandingStorage, 
+    typename Hasher, 
+    typename Iterator,
+    typename BumpStorage = std::vector<typename std::iterator_traits<Iterator>::value_type>
+>
+bool BandingAddRange(
+    BandingStorage *bs, 
+    Hasher &hasher, 
+    Iterator begin, 
+    Iterator end, 
+    BumpStorage *bump_vec) 
+{
     using CoeffRow = typename BandingStorage::CoeffRow;
     using Index = typename BandingStorage::Index;
     using ResultRow = typename BandingStorage::ResultRow;

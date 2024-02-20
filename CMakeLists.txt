@@ -37,6 +37,13 @@ if (UNIX)
   endif()
 endif()
 
+include(FetchContent)
+FetchContent_Declare(
+  argparse
+  GIT_REPOSITORY https://github.com/yhhshb/argparse.git
+)
+FetchContent_MakeAvailable(argparse)
+
 include_directories(${PROJECT_SOURCE_DIR})
 
 set(TLX_SOURCES
@@ -53,6 +60,6 @@ set(BURR_SOURCES
 add_library(BuRR ${BURR_SOURCES})
 
 if (MAKE_TESTS)
-  add_executable(ribbon targets/ribbon.cpp ${BURR_SOURCES} ${TLX_SOURCES})
-  target_link_libraries(ribbon rt)
+  add_executable(ribbon targets/main.cpp ${BURR_SOURCES} ${TLX_SOURCES})
+  target_link_libraries(ribbon argparse rt)
 endif()

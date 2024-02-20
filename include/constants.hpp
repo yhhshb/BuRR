@@ -4,6 +4,4 @@
 
 namespace ribbon {
 
-using namespace emem;
-
 }

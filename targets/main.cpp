@@ -2,17 +2,21 @@
 //  All Rights Reserved.  This source code is licensed under the Apache 2.0
 //  License (found in the LICENSE file in the root directory).
 
-#include "../include/ribbon.hpp"
-#include "../include/rocksdb/stop_watch.h"
 
-#include "../bundled/tlx/include/cmdline_parser.hpp"
-#include "../bundled/tlx/include/logger.hpp"
 
 #include <atomic>
 #include <cstdlib>
 #include <numeric>
 #include <thread>
 #include <vector>
+
+
+
+#include "../include/ribbon.hpp"
+#include "../include/rocksdb/stop_watch.h"
+
+#include "../bundled/tlx/include/cmdline_parser.hpp"
+#include "../bundled/tlx/include/logger.hpp"
 
 #define DO_EXPAND(VAL) VAL##1
 #define EXPAND(VAL)    DO_EXPAND(VAL)
@@ -22,7 +26,7 @@
 #define RIBBON_BITS 8
 #endif
 
-using namespace ribbon;
+namespace ribbon {
 
 bool no_queries = false;
 
@@ -221,7 +225,35 @@ void dispatch(ThreshMode mode, Args&... args) {
     }
 }
 
-int main(int argc, char** argv) {
+} // namespace ribbon
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------
+
+#include <iostream>
+#include "../include/build.hpp"
+
+using namespace ribbon;
+
+int main(int argc, char* argv[])
+{
+    auto build_parser = get_parser_build();
+    argparse::ArgumentParser program(argv[0]);
+    program.add_subparser(build_parser);
+    try {
+        program.parse_args(argc, argv);
+    } catch (const std::runtime_error& e) {
+        std::cerr << e.what() << "\n";
+        std::cerr << program;
+        return 1;
+    }
+    if (program.is_subcommand_used(build_parser)) return build_main(build_parser);
+    else std::cerr << program << "\n";
+    return 0;
+}
+
+/*
+int old_main(int argc, char* argv[]) 
+{
     tlx::CmdlineParser cmd;
     size_t seed = 42, num_slots = 1024 * 1024;
     unsigned ribbon_width = 32, depth = 3;
@@ -279,3 +311,4 @@ int main(int argc, char** argv) {
     dispatch(mode, depth, ribbon_width, cls, interleaved, sparsecoeffs, shift,
              num_slots, eps, seed, num_threads);
 }
+*/
