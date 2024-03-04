@@ -1,5 +1,6 @@
+#include "../include/BuRR.hpp"
 #include "../include/build.hpp"
-#include "../BuRR.hpp"
+
 
 namespace ribbon {
 
@@ -8,8 +9,9 @@ option_t check_args(const argparse::ArgumentParser& parser);
 int build_main(const argparse::ArgumentParser& parser)
 {
     auto opts = check_args(parser);
-    // BuRR rds(opts);
+    BuRR rds(opts);
     // rds.build(start, stop);
+    return 0;
 }
 
 argparse::ArgumentParser get_parser_build()
@@ -58,7 +60,7 @@ option_t check_args(const argparse::ArgumentParser& parser)
     opts.check = parser.get<bool>("-C");
     opts.verbose = parser.get<std::size_t>("-v");
     if (opts.epsilon < 0 or opts.epsilon > 1) throw std::invalid_argument("epsilon must be in [0, 1]");
-    if (opts.depth > 4) std::cerr << "Warning: are " << opts.depth << " layers really necessary?\n";
+    if (opts.layers > 4) std::cerr << "Warning: are " << opts.layers << " layers really necessary?\n";
     return opts;
 }
 

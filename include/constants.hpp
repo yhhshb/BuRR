@@ -1,7 +1,9 @@
 #pragma once
 
-#include "../bundled/biolib/include/external_memory_vector.hpp"
+#include <string>
 
-namespace ribbon {
+namespace ribbon::util {
+
+std::string get_name(const std::string& prefix, uint64_t run_id);
 
 }

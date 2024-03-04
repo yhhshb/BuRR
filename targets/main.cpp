@@ -11,7 +11,6 @@
 #include <vector>
 
 
-
 #include "../include/ribbon.hpp"
 #include "../include/rocksdb/stop_watch.h"
 

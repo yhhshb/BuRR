@@ -53,13 +53,21 @@ set(TLX_SOURCES
 )
 
 set(BURR_SOURCES
+  src/constants.cpp
   src/burr_config.cpp
   src/sorter.cpp
+  src/build.cpp
+  src/BuRR.cpp
 )
 
-add_library(BuRR ${BURR_SOURCES})
+# add_library(BuRR ${BURR_SOURCES})
+add_executable(ribbon targets/main.cpp ${BURR_SOURCES} ${TLX_SOURCES})
+target_link_libraries(ribbon 
+  argparse 
+)
 
-if (MAKE_TESTS)
-  add_executable(ribbon targets/main.cpp ${BURR_SOURCES} ${TLX_SOURCES})
-  target_link_libraries(ribbon argparse rt)
+if (LINUX)
+  target_link_libraries(ribbon
+    rt
+  )
 endif()
