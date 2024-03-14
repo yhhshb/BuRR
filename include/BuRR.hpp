@@ -29,9 +29,9 @@ class option_t
         bool check;
 };
 
-#define CLASS_HEADER 
-#define METHOD_HEADER BuRR // BuRR<Iterator, Hasher>
-#define BUILD_FUNCTION_HEADER template <typename Iterator, typename Hasher>
+#define CLASS_HEADER template <class SolutionStorage>
+#define METHOD_HEADER BuRR<SolutionStorage>
+#define BUILD_FUNCTION_HEADER template <class Iterator, class Hasher>
 
 CLASS_HEADER
 class BuRR // Standard IR data structure, 2-bit variant
@@ -62,13 +62,8 @@ class BuRR // Standard IR data structure, 2-bit variant
         BUILD_FUNCTION_HEADER
         void build(Iterator start, std::size_t n);
 
-        std::size_t count() const noexcept; // returns the number of elements matching specific key
-
-        template <typename K>
-        const_iterator find(K const& key) const; // finds element with specific key
-
-        template <typename K>
-        bool contains(K const& key) const; // checks if the container contains element with specific key
+        template <typename KeyType>
+        std::size_t query(const KeyType key);
 
     private:
         std::tuple<std::size_t, std::size_t> 
@@ -87,8 +82,9 @@ class BuRR // Standard IR data structure, 2-bit variant
         std::size_t bucket_size;
         std::size_t lower;
         std::size_t upper;
-        std::size_t m;
+        // std::size_t m;
         bit::packed::vector<std::size_t> bump_info;
+        SolutionStorage Z;
         // slots_per_item = 1 + epsilon
 };
 
@@ -121,7 +117,6 @@ METHOD_HEADER::build(Iterator start, Iterator stop)
     emem::external_memory_vector<hash_pair_type> hashed_keys(option_bundle.max_ram, option_bundle.tmp_dir, util::get_name("hashes", run_id));
     std::transform(start, stop, std::back_inserter(hashed_keys), [this](auto &v) {return std::make_pair(Hasher::hash(v.first, option_bundle.seed), v.second);});
     
-
     std::size_t layer = 0;
     do {
         hashed_keys = build_layer(run_id, hashed_keys, coefficients, results);
@@ -129,6 +124,7 @@ METHOD_HEADER::build(Iterator start, Iterator stop)
     } while(hashed_keys.size() != 0 and layer < option_bundle.layers);
     assert(layer <= option_bundle.layers);
     if (layer < option_bundle.layers) option_bundle.layers = layer;
+
     if (hashed_keys.size() != 0) {
         // TODO save last items into fallback data structure
     }
@@ -153,7 +149,7 @@ METHOD_HEADER::build_layer(
 {
     using hash_pair_type = std::pair<KeyType, ValueType>;
     auto ribbon_width = ::bit::size<KeyType>(); // recomputed here to avoid passing one additional argument
-    m = (1 + option_bundle.epsilon) * pairs.size(); // m = (1+e)*n
+    std::size_t m = (1 + option_bundle.epsilon) * pairs.size(); // m = (1+e)*n
     m = ((m + ribbon_width - 1) / ribbon_width) * ribbon_width; // round up to next multiple of ribbon_width for interleaved storage
 
     std::vector<typename Hasher::hash_t> coefficients(m);
@@ -240,7 +236,7 @@ METHOD_HEADER::build_layer(
     // Z must depend on concrete types, independent of the template paramters
     // Z is generated from two local vectors using back substitution
 
-    // TODO Z = backsubstitution(coefficients, results);
+    Z.backsubstitution(coefficients, results);
 }
 
 } // namespace ribbon
