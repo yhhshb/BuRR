@@ -11,6 +11,7 @@
 #include "../bundled/biolib/include/packed_vector.hpp"
 #include "../bundled/biolib/include/bit_operations.hpp"
 #include "../bundled/biolib/include/size_iterator.hpp"
+#include "../bundled/biolib/include/toolbox.hpp"
 
 #include "constants.hpp"
 
@@ -29,9 +30,9 @@ class option_t
         bool check;
 };
 
-#define CLASS_HEADER template <class SolutionStorage>
-#define METHOD_HEADER BuRR<SolutionStorage>
-#define BUILD_FUNCTION_HEADER template <class Iterator, class Hasher>
+#define CLASS_HEADER template <class SolutionStorage, class Hasher>
+#define METHOD_HEADER BuRR<SolutionStorage, Hasher>
+#define BUILD_FUNCTION_HEADER template <class Iterator>
 
 CLASS_HEADER
 class BuRR // Standard IR data structure, 2-bit variant
@@ -42,7 +43,7 @@ class BuRR // Standard IR data structure, 2-bit variant
         // using key_compare = Compare;
         // using allocator_type = Allocator;
 
-        enum class ThreshMode : std::size_t { normal = 0, onebit, twobit };
+        enum class bumping : uint8_t {ALL = 0, MOST, LITTLE, NONE};
 
         class const_iterator
         {
@@ -62,6 +63,9 @@ class BuRR // Standard IR data structure, 2-bit variant
         BUILD_FUNCTION_HEADER
         void build(Iterator start, std::size_t n);
 
+        template <typename KeyType, typename ValueType>
+        ValueType at (const KeyType& x) const noexcept;
+
         template <typename KeyType>
         std::size_t query(const KeyType key);
 
@@ -69,7 +73,7 @@ class BuRR // Standard IR data structure, 2-bit variant
         std::tuple<std::size_t, std::size_t> 
         get_thresholds(std::size_t ribbon_width, double eps, std::size_t bucket_size);
 
-        template <typename KeyType, typename ValueType, typename Hasher>
+        template <typename KeyType, typename ValueType>
         emem::external_memory_vector<std::pair<KeyType, ValueType>> 
         build_layer(
             const std::size_t run_id, 
@@ -77,6 +81,9 @@ class BuRR // Standard IR data structure, 2-bit variant
             std::vector<KeyType>& coefficients, 
             std::vector<ValueType>& results
         );
+
+        std::pair<std::size_t, bumping> 
+        hash_to_bucket(typename Hasher::hash_t hkey, std::size_t m) const noexcept;
 
         option_t option_bundle;
         std::size_t bucket_size;
@@ -138,8 +145,10 @@ METHOD_HEADER::build(Iterator start, std::size_t n)
     build(iterators::size_iterator(start, 0), iterators::size_iterator(start, n));
 }
 
+
+
 CLASS_HEADER
-template <typename KeyType, typename ValueType, typename Hasher>
+template <typename KeyType, typename ValueType> // Here KeyType are the hashed keys
 emem::external_memory_vector<std::pair<KeyType, ValueType>> 
 METHOD_HEADER::build_layer(
     const std::size_t run_id, 
@@ -149,7 +158,7 @@ METHOD_HEADER::build_layer(
 {
     using hash_pair_type = std::pair<KeyType, ValueType>;
     auto ribbon_width = ::bit::size<KeyType>(); // recomputed here to avoid passing one additional argument
-    std::size_t m = (1 + option_bundle.epsilon) * pairs.size(); // m = (1+e)*n
+    std::size_t m = (1 + option_bundle.epsilon) * pairs.size(); // m = (1+e)*n (previously called num_slots)
     m = ((m + ribbon_width - 1) / ribbon_width) * ribbon_width; // round up to next multiple of ribbon_width for interleaved storage
 
     std::vector<typename Hasher::hash_t> coefficients(m);
@@ -171,24 +180,18 @@ METHOD_HEADER::build_layer(
     std::size_t prev_bucket = 0;
     std::vector<std::pair<std::size_t, hash_pair_type>> bump_cache;
     for(auto itr = pairs.cbegin(); itr != pairs.cend(); ++itr, ++i) {
-        const auto hash = Hasher::hash((*itr).first, 0); // rehash for current run. IMPROVEMENT: maybe use a fast XOR rehasher
-        assert(hash); // hash must contain at least one set bit for ribbon
-        const std::size_t start = hasher.GetStart(hash, num_starts);
-        const std::size_t sortpos = Hasher::SortToStart(start);
-        const std::size_t bucket = Hasher::GetBucket(sortpos);
-        const std::size_t val = Hasher::GetIntraBucket(sortpos);
-        const std::size_t cval = hasher.Compress(val);
+        auto [bucket, cval] = hash_to_cval((*itr).first);
 
         if (bucket < prev_bucket) throw std::runtime_error("[build_layer] new bucket index < previous one");
 
         if (bucket != last_bucket) { // moving to next bucket
-            if (thresh == Hasher::NoBumpThresh()) {
+            if (thresh == bumping::NONE) {
                 // sLOG << "Bucket" << last_bucket << "has no bumped items";
                 bump_info[last_bucket] = thresh;
             }
             all_good = true;
             last_bucket = bucket;
-            thresh = Hasher::NoBumpThresh(); // maximum == "no bumpage"
+            thresh = bumping::NONE; // maximum == "no bumpage"
             last_cval = cval;
             bump_cache.clear();
         } else if (!all_good) { // direct hard bump
@@ -225,7 +228,7 @@ METHOD_HEADER::build_layer(
     }
 
     // set final threshold
-    if (thresh == Hasher::NoBumpThresh()) {
+    if (thresh == bumping::NONE) {
         bump_info[last_bucket] = thresh;
     }
 
@@ -237,6 +240,99 @@ METHOD_HEADER::build_layer(
     // Z is generated from two local vectors using back substitution
 
     Z.backsubstitution(coefficients, results);
+}
+
+CLASS_HEADER
+std::pair<std::size_t, typename METHOD_HEADER::bumping> 
+METHOD_HEADER::hash_to_bucket(typename Hasher::hash_t hkey, std::size_t m) const noexcept
+{
+    std::pair<bumping_t, std::size_t> toret;
+    const auto hash = Hasher::hash(hkey, 0); // rehash for current run. IMPROVEMENT: maybe use a fast XOR rehasher
+    assert(hash); // hash must contain at least one set bit for ribbon
+    const std::size_t start = toolbox::fastrange(hash, m - ::bit::size<Hasher::hash_t>() + 1);
+    assert(bucket_size != 0); // just check if bucket size is initialized
+    const std::size_t sortpos = start ^ (bucket_size - 1);
+    const std::size_t toret.first = sortpos / bucket_size;
+    const std::size_t val = sortpos % bucket_size;
+    
+    if (val >= bucket_size) toret.second = bumping::NONE; // none bumped
+    else if (val > upper) toret.second = bumping::SOME; // some bumped
+    else if (val > lower) toret.second = bumping::MOST; // most bumped
+    else toret.second = bumping::ALL; // all bumped
+    return toret;
+}
+
+CLASS_HEADER
+template <typename KeyType, typename ValueType>
+ValueType 
+METHOD_HEADER::at (const KeyType& x) const noexcept
+{
+    auto ribbon_width = ::bit::size<Hasher::hash_t>();
+    
+
+}
+
+// General retrieval query a key from InterleavedSolutionStorage.
+template <typename InterleavedSolutionStorage, typename Hasher>
+std::pair<bool, typename InterleavedSolutionStorage::ResultRow>
+InterleavedRetrievalQuery(const typename HashTraits<Hasher>::mhc_or_key_t &key,
+                          const Hasher &hasher,
+                          const InterleavedSolutionStorage &iss) {
+    using Hash = typename Hasher::Hash;
+    using Index = typename InterleavedSolutionStorage::Index;
+    using CoeffRow = typename InterleavedSolutionStorage::CoeffRow;
+    using ResultRow = typename InterleavedSolutionStorage::ResultRow;
+
+    static_assert(sizeof(Index) == sizeof(typename Hasher::Index),
+                  "must be same");
+    static_assert(sizeof(CoeffRow) == sizeof(typename Hasher::CoeffRow),
+                  "must be same");
+
+    constexpr bool debug = false;
+    constexpr auto kCoeffBits = static_cast<Index>(sizeof(CoeffRow) * 8U);
+    constexpr Index num_columns = InterleavedSolutionStorage::kResultBits;
+
+    // don't query an empty ribbon, please
+    assert(iss.GetNumSlots() >= kCoeffBits);
+    const Hash hash = hasher.GetHash(key);
+    const Index start_slot = hasher.GetStart(hash, iss.GetNumStarts());
+    const Index bucket = hasher.GetBucket(start_slot);
+
+    const Index start_block_num = start_slot / kCoeffBits;
+    Index segment = start_block_num * num_columns;
+    iss.PrefetchQuery(segment);
+
+    const Index val = hasher.GetIntraBucketFromStart(start_slot),
+                cval = hasher.Compress(val);
+
+    if (CheckBumped(val, cval, bucket, hasher, iss)) {
+        sLOG << "Item was bumped, hash" << hash << "start" << start_slot
+             << "bucket" << bucket << "val" << val << cval << "thresh"
+             << (size_t)iss.GetMeta(bucket);
+        return std::make_pair(true, 0);
+    }
+
+    sLOG << "Searching in bucket" << bucket << "start" << start_slot << "val"
+         << val << cval << "below thresh =" << (size_t)iss.GetMeta(bucket);
+
+    const Index start_bit = start_slot % kCoeffBits;
+    const CoeffRow cr = hasher.GetCoeffs(hash);
+
+    ResultRow sr = 0;
+    const CoeffRow cr_left = cr << start_bit;
+    for (Index i = 0; i < num_columns; ++i) {
+        sr ^= rocksdb::BitParity(iss.GetSegment(segment + i) & cr_left) << i;
+    }
+
+    if (start_bit > 0) {
+        segment += num_columns;
+        const CoeffRow cr_right = cr >> (kCoeffBits - start_bit);
+        for (Index i = 0; i < num_columns; ++i) {
+            sr ^= rocksdb::BitParity(iss.GetSegment(segment + i) & cr_right) << i;
+        }
+    }
+
+    return std::make_pair(false, sr);
 }
 
 } // namespace ribbon

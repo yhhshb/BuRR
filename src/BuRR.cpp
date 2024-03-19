@@ -4,7 +4,12 @@ namespace ribbon {
 
 CLASS_HEADER
 METHOD_HEADER::BuRR(const option_t& build_options)
-    : option_bundle(build_options), bump_info(bit::packed::vector<std::size_t>(2)) // 2-bit variant
+    : 
+    option_bundle(build_options), 
+    bucket_size(0),
+    lower(0),
+    upper(0),
+    bump_info(bit::packed::vector<std::size_t>(2)) // 2-bit variant
 {
 
 }
