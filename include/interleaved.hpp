@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include "../bundled/biolib/include/packed_vector.hpp"
 
 namespace ribbon::storage {
@@ -18,13 +19,18 @@ class interleaved
 
         std::size_t value_width() const noexcept;
 
+        template <typename ValueType>
+        std::optional<ValueType>
+        at(const std::size_t offset) const noexcept;
+
     private:
         std::size_t valwidth;
         bit::packed::vector<std::size_t> data;
 };
 
 template <typename KeyType, typename ValueType>
-void backsubstitution(
+void 
+backsubstitution(
     const std::size_t value_width, // this can be < than ValueType's bit size
     const std::vector<KeyType>& coefficients, 
     const std::vector<ValueType>& results
@@ -82,6 +88,34 @@ void backsubstitution(
     }
     assert(block == 0);
     assert(segment == 0);
+}
+
+template <typename ValueType>
+std::optional<ValueType> 
+interleaved::at(const std::tuple<std::size_t, std::size_t, typename METHOD_HEADER::bumping, typename Hasher::hash_t>& pack) const noexcept
+{
+    const auto ribbon_width = ::bit::size<Hasher::hash_t>();
+    const auto [offset, bucket, cval, hash] = pack;
+
+    const std::size_t start_block_num = offset / ribbon_width;
+    const std::size_t segment = start_block_num * Z.value_width();
+    const std::size_t start_bit = offset % ribbon_width;
+
+    const std::size_t cr = hasher.GetCoeffs(hash); // TODO check usage of GetCoeff from hasher.hpp
+    const std::size_t cr_left = cr << start_bit;
+
+    ValueType retrieved = 0;
+    for (std::size_t i = 0; i < value_width(); ++i) {
+        retrieved ^= bit::parity(iss.GetSegment(segment + i) & cr_left) << i;
+    }
+
+    if (start_bit > 0) {
+        segment += value_width();
+        const std::size_t cr_right = cr >> (kCoeffBits - start_bit);
+        for (std::size_t i = 0; i < value_width(); ++i) {
+            retrieved ^= bit::parity(iss.GetSegment(segment + i) & cr_right) << i;
+        }
+    }
 }
 
 } // namespace ribbon

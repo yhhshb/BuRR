@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <chrono>
+#include <optional>
 #include <tuple>
 #include <string>
 #include <vector>
@@ -40,20 +41,6 @@ class BuRR // Standard IR data structure, 2-bit variant
     public:
         using size_type = std::size_t; // Unsigned integer type (usually std::size_t)
         using difference_type = std::ptrdiff_t; // Signed integer type (usually std::ptrdiff_t)
-        // using key_compare = Compare;
-        // using allocator_type = Allocator;
-
-        enum class bumping : uint8_t {ALL = 0, MOST, LITTLE, NONE};
-
-        class const_iterator
-        {
-            public:
-                const_iterator(const BuRR& parent, std::size_t idx);
-
-            private:
-                friend bool operator==(const const_iterator& itr1, const const_iterator& itr2) {return true;}
-                friend bool operator!=(const const_iterator& itr1, const const_iterator& itr2) {return not(itr1 == itr2);}
-        };
 
         BuRR(const option_t& build_options);
 
@@ -66,32 +53,56 @@ class BuRR // Standard IR data structure, 2-bit variant
         template <typename KeyType, typename ValueType>
         ValueType at (const KeyType& x) const noexcept;
 
-        template <typename KeyType>
-        std::size_t query(const KeyType key);
-
     private:
+        enum class bumping : uint8_t {
+            ALL = 0, 
+            MOST, 
+            LITTLE, 
+            NONE
+        };
+        class layer
+        {
+            public:
+                layer();
+                
+                template <typename KeyType, typename ValueType>
+                emem::external_memory_vector<std::pair<KeyType, ValueType>> 
+                build(
+                    const std::size_t run_id, 
+                    const emem::external_memory_vector<std::pair<KeyType, ValueType>>& pairs
+                );
+
+                template <typename ValueType>
+                std::optional<ValueType>
+                at(const typename Hasher::hash_t hval) const noexcept;
+
+            private:
+                std::tuple<std::size_t, std::size_t, typename METHOD_HEADER::bumping, typename Hasher::hash_t> 
+                hash_to_bucket(typename Hasher::hash_t hkey, std::size_t m) const noexcept;
+
+                template <typename ValueType>
+                std::optional<std::size_t>
+                insert(
+                    const std::size_t start, 
+                    const typename Hasher::hash_t ribbon_hash, 
+                    const ValueType value,
+                    std::vector<typename Hasher::hash_t>& coefficients,
+                    std::vector<ValueType>& results
+                );
+
+                bit::packed::vector<std::size_t> bump_info;
+                std::size_t m; // size of the layer
+                SolutionStorage Z; // the actual data
+        };
+
         std::tuple<std::size_t, std::size_t> 
         get_thresholds(std::size_t ribbon_width, double eps, std::size_t bucket_size);
-
-        template <typename KeyType, typename ValueType>
-        emem::external_memory_vector<std::pair<KeyType, ValueType>> 
-        build_layer(
-            const std::size_t run_id, 
-            const emem::external_memory_vector<std::pair<KeyType, ValueType>>& pairs, 
-            std::vector<KeyType>& coefficients, 
-            std::vector<ValueType>& results
-        );
-
-        std::pair<std::size_t, bumping> 
-        hash_to_bucket(typename Hasher::hash_t hkey, std::size_t m) const noexcept;
 
         option_t option_bundle;
         std::size_t bucket_size;
         std::size_t lower;
         std::size_t upper;
-        // std::size_t m;
-        bit::packed::vector<std::size_t> bump_info;
-        SolutionStorage Z;
+        std::vector<layer> layers;
         // slots_per_item = 1 + epsilon
 };
 
@@ -106,7 +117,6 @@ METHOD_HEADER::build(Iterator start, Iterator stop)
     // using value_type = std::pair<key_type, mapped_type>;
     using hash_pair_type = std::pair<typename Hasher::hash_t, mapped_type>;
 
-    bump_info = bit::packed::vector<std::size_t>(2);
     const std::size_t run_id = std::chrono::high_resolution_clock::now().time_since_epoch().count();
     auto ribbon_width = ::bit::size<Hasher::hash_t>();
     auto a = std::ceil(std::log2(ribbon_width));
@@ -123,14 +133,22 @@ METHOD_HEADER::build(Iterator start, Iterator stop)
 
     emem::external_memory_vector<hash_pair_type> hashed_keys(option_bundle.max_ram, option_bundle.tmp_dir, util::get_name("hashes", run_id));
     std::transform(start, stop, std::back_inserter(hashed_keys), [this](auto &v) {return std::make_pair(Hasher::hash(v.first, option_bundle.seed), v.second);});
+    if (option_bundle.check and 
+        std::adjacent_find(
+            hashed_keys.cbegin(), 
+            hashed_keys.cend(), 
+            [](const auto &a, const auto &b) {
+                return a.first == b.first;
+            }
+        ) != end
+    ) throw std::runtime_error("[Build] Hashes are not unique");
     
-    std::size_t layer = 0;
     do {
-        hashed_keys = build_layer(run_id, hashed_keys, coefficients, results);
-        ++layer;
-    } while(hashed_keys.size() != 0 and layer < option_bundle.layers);
-    assert(layer <= option_bundle.layers);
-    if (layer < option_bundle.layers) option_bundle.layers = layer;
+        layers.emplace_back();
+        hashed_keys = layers.back.build(run_id, hashed_keys, coefficients, results);
+    } while(hashed_keys.size() != 0 and layers.size() < option_bundle.nlayers);
+    assert(layers.size() <= option_bundle.nlayers);
+    // if (layers.size() < option_bundle.nlayers) option_bundle.nlayers = layers.size(); // just use layers.size()
 
     if (hashed_keys.size() != 0) {
         // TODO save last items into fallback data structure
@@ -145,50 +163,42 @@ METHOD_HEADER::build(Iterator start, std::size_t n)
     build(iterators::size_iterator(start, 0), iterators::size_iterator(start, n));
 }
 
-
-
 CLASS_HEADER
 template <typename KeyType, typename ValueType> // Here KeyType are the hashed keys
 emem::external_memory_vector<std::pair<KeyType, ValueType>> 
-METHOD_HEADER::build_layer(
+METHOD_HEADER::layer::build(
     const std::size_t run_id, 
-    const emem::external_memory_vector<std::pair<KeyType, ValueType>>& pairs, 
-    std::vector<KeyType>& coefficients, 
-    std::vector<ValueType>& results)
+    const emem::external_memory_vector<std::pair<KeyType, ValueType>>& pairs
+)
 {
     using hash_pair_type = std::pair<KeyType, ValueType>;
-    auto ribbon_width = ::bit::size<KeyType>(); // recomputed here to avoid passing one additional argument
-    std::size_t m = (1 + option_bundle.epsilon) * pairs.size(); // m = (1+e)*n (previously called num_slots)
+    bump_info = bit::packed::vector<std::size_t>(2); // 2-bit thresholds
+    const auto ribbon_width = ::bit::size<KeyType>(); // recomputed here to avoid passing one additional argument
+    m = (1 + option_bundle.epsilon) * pairs.size(); // m = (1+e)*n (previously called num_slots)
     m = ((m + ribbon_width - 1) / ribbon_width) * ribbon_width; // round up to next multiple of ribbon_width for interleaved storage
 
     std::vector<typename Hasher::hash_t> coefficients(m);
     std::vector<mapped_type> results(m);
     emem::external_memory_vector<hash_pair_type> bumped_items(option_bundle.max_ram, option_bundle.tmp_dir, util::get_name("bumped", run_id));
+    const auto do_bump = [&coefficients, &results, &bumped_items](auto &vec) {
+        for (auto [row, elem] : vec) {
+            coefficients[row] = 0;
+            results[row] = 0;
+            bumped_items.push_back(elem);
+        }
+        vec.clear();
+    };
 
     //----------------------------------------------------------------------------------------------------------------
 
-    if (option_bundle.check and 
-        std::adjacent_find(
-            pairs.cbegin(), 
-            pairs.cend(), 
-            [](const auto &a, const auto &b) {
-                return a.first == b.first;
-            }
-        ) != end
-    ) throw std::runtime_error("[Build] Hashes are not unique");
-
+    bool all_good = true;
     std::size_t prev_bucket = 0;
     std::vector<std::pair<std::size_t, hash_pair_type>> bump_cache;
     for(auto itr = pairs.cbegin(); itr != pairs.cend(); ++itr, ++i) {
-        auto [bucket, cval] = hash_to_cval((*itr).first);
-
+        auto [offset, bucket, cval, hash] = hash_to_bucket((*itr).first);
         if (bucket < prev_bucket) throw std::runtime_error("[build_layer] new bucket index < previous one");
-
         if (bucket != last_bucket) { // moving to next bucket
-            if (thresh == bumping::NONE) {
-                // sLOG << "Bucket" << last_bucket << "has no bumped items";
-                bump_info[last_bucket] = thresh;
-            }
+            if (thresh == bumping::NONE) bump_info[last_bucket] = thresh;
             all_good = true;
             last_bucket = bucket;
             thresh = bumping::NONE; // maximum == "no bumpage"
@@ -202,17 +212,10 @@ METHOD_HEADER::build_layer(
             last_cval = cval;
         }
 
-        const auto do_bump = [&coefficients, &results, &bumped_items](auto &vec) {
-            for (auto [row, elem] : vec) {
-                coefficients[row] = 0;
-                results[row] = 0;
-                bumped_items.push_back(elem);
-            }
-            vec.clear();
-        };
-
-        auto [success, row] = BandingAdd<kFCA1>(bs, start, hash, (*itr).second);
-        if (!success) {
+        auto row = insert(offset, hash, (*itr).second, coefficients, results);
+        if (row) {
+            bump_cache.emplace_back(row, *itr);
+        } else {
             assert(all_good);
             if (option_bundle.layers == 1) return false; // bumping disabled, abort!
             // if we got this far, this is the first failure in this bucket,
@@ -222,54 +225,107 @@ METHOD_HEADER::build_layer(
             all_good = false;
             do_bump(bump_cache);
             bumped_items.push_back(*itr);
-        } else {
-            bump_cache.emplace_back(row, *itr);
         }
     }
-
-    // set final threshold
-    if (thresh == bumping::NONE) {
-        bump_info[last_bucket] = thresh;
-    }
-
+    if (thresh == bumping::NONE) bump_info[last_bucket] = thresh; // set final threshold
     total_empty_slots += m - pairs.size() + bumped_items.size();
 
-    // TODO
     // The final result is a (interleaved) matrix Z + bumping information and the last bumped elements
     // Z must depend on concrete types, independent of the template paramters
     // Z is generated from two local vectors using back substitution
-
     Z.backsubstitution(coefficients, results);
+    return bumped_items;
 }
 
 CLASS_HEADER
-std::pair<std::size_t, typename METHOD_HEADER::bumping> 
-METHOD_HEADER::hash_to_bucket(typename Hasher::hash_t hkey, std::size_t m) const noexcept
+template <typename ValueType>
+std::optional<std::size_t>
+METHOD_HEADER::layer::insert(
+    const std::size_t start,
+    const typename Hasher::hash_t ribbon_hash,
+    const ValueType value,
+    std::vector<typename Hasher::hash_t>& coefficients,
+    std::vector<ValueType>& results
+) 
 {
-    std::pair<bumping_t, std::size_t> toret;
+    std::size_t pos = start;
+    // if constexpr (!kFCA1) {
+    //     int tz = bit::lsbll(ribbon_hash);
+    //     pos += static_cast<size_t>(tz);
+    //     ribbon_hash >>= tz;
+    // }
+
+    while (true) {
+        assert(pos < m);
+        assert((ribbon_hash & 1) == 1);
+
+        auto other = coefficients.at(pos);
+        if (other == 0) { // found an empty slot, insert
+            coefficients[pos] = ribbon_hash;
+            results[pos] = value;
+            return pos;
+        }
+
+        assert((other & 1) == 1);
+        ribbon_hash ^= other;
+        value ^= results.at(pos);
+        if (ribbon_hash == 0) return std::nullopt; // linearly dependent!
+
+        // move to now-leading coefficient
+        auto tz = bit::lsbll(ribbon_hash);
+        pos += tz;
+        ribbon_hash >>= tz;
+    }
+    throw std::runtime_error("[layer::insert] This should never happen");
+}
+
+CLASS_HEADER
+std::tuple<
+    std::size_t, // offset
+    std::size_t, // position inside the bucket
+    typename METHOD_HEADER::bumping, // bump threshold
+    typename Hasher::hash_t // (re)hashed value (the key)
+> 
+METHOD_HEADER::layer::hash_to_bucket(typename Hasher::hash_t hkey, std::size_t m) const noexcept
+{
     const auto hash = Hasher::hash(hkey, 0); // rehash for current run. IMPROVEMENT: maybe use a fast XOR rehasher
     assert(hash); // hash must contain at least one set bit for ribbon
     const std::size_t start = toolbox::fastrange(hash, m - ::bit::size<Hasher::hash_t>() + 1);
     assert(bucket_size != 0); // just check if bucket size is initialized
-    const std::size_t sortpos = start ^ (bucket_size - 1);
-    const std::size_t toret.first = sortpos / bucket_size;
+    const std::size_t sortpos = start ^ (bucket_size - 1); // ???
+
     const std::size_t val = sortpos % bucket_size;
-    
-    if (val >= bucket_size) toret.second = bumping::NONE; // none bumped
-    else if (val > upper) toret.second = bumping::SOME; // some bumped
-    else if (val > lower) toret.second = bumping::MOST; // most bumped
-    else toret.second = bumping::ALL; // all bumped
-    return toret;
+    bumping thr_type;
+    if (val >= bucket_size) thr_type = bumping::NONE; // none bumped
+    else if (val > upper) thr_type = bumping::SOME; // some bumped
+    else if (val > lower) thr_type = bumping::MOST; // most bumped
+    else thr_type = bumping::ALL; // all bumped
+    return std::make_tuple(start, sortpos / bucket_size, thr_type, hash);
+}
+
+CLASS_HEADER
+template <typename ValueType>
+std::optional<ValueType>
+METHOD_HEADER::layer::at(const typename Hasher::hash_t hval) const noexcept
+{
+    // iss.PrefetchQuery(segment);
+    return Z.template at(hash_to_bucket(hval, m));
 }
 
 CLASS_HEADER
 template <typename KeyType, typename ValueType>
 ValueType 
-METHOD_HEADER::at (const KeyType& x) const noexcept
+METHOD_HEADER::at(const KeyType& x) const noexcept
 {
-    auto ribbon_width = ::bit::size<Hasher::hash_t>();
-    
-
+    const auto ribbon_width = ::bit::size<Hasher::hash_t>();
+    auto hash = Hasher::hash(x, option_bundle.seed);
+    std::option<ValueType> ret = std::nullopt;
+    std::size_t i = 0;
+    while(!ret and i < layers.size()) {
+        ret = layers.at(i).at(hash);
+    }
+    assert(ret.has_value());
+    return ret.value_or(static_cast<ValueType>(std::numeric_limits<ValueType>::max()));
 }
 
 // General retrieval query a key from InterleavedSolutionStorage.
