@@ -22,7 +22,7 @@ class option_t
 {
     public:
         double epsilon;
-        std::size_t layers;
+        std::size_t nlayers;
         uint64_t seed;
         std::string tmp_dir;
         std::size_t max_ram;
@@ -74,21 +74,24 @@ class BuRR // Standard IR data structure, 2-bit variant
 
                 template <typename ValueType>
                 std::optional<ValueType>
-                at(const typename Hasher::hash_t hval) const noexcept;
+                at(const typename Hasher::hash_type hval) const noexcept;
 
             private:
-                std::tuple<std::size_t, std::size_t, typename METHOD_HEADER::bumping, typename Hasher::hash_t> 
-                hash_to_bucket(typename Hasher::hash_t hkey, std::size_t m) const noexcept;
+                std::tuple<std::size_t, std::size_t, typename METHOD_HEADER::bumping, typename Hasher::hash_type> 
+                hash_to_bucket(typename Hasher::hash_type hkey, std::size_t m) const noexcept;
 
                 template <typename ValueType>
                 std::optional<std::size_t>
                 insert(
                     const std::size_t start, 
-                    const typename Hasher::hash_t ribbon_hash, 
+                    const typename Hasher::hash_type ribbon_hash, 
                     const ValueType value,
-                    std::vector<typename Hasher::hash_t>& coefficients,
+                    std::vector<typename Hasher::hash_type>& coefficients,
                     std::vector<ValueType>& results
                 );
+
+                bool
+                bumped(bumping info) const noexcept;
 
                 bit::packed::vector<std::size_t> bump_info;
                 std::size_t m; // size of the layer
@@ -99,6 +102,7 @@ class BuRR // Standard IR data structure, 2-bit variant
         get_thresholds(std::size_t ribbon_width, double eps, std::size_t bucket_size);
 
         option_t option_bundle;
+        std::size_t total_empty_slots;
         std::size_t bucket_size;
         std::size_t lower;
         std::size_t upper;
@@ -115,10 +119,10 @@ METHOD_HEADER::build(Iterator start, Iterator stop)
     using key_type = typename Iterator::value_type::first_type;
     using mapped_type = typename Iterator::value_type::second_type;
     // using value_type = std::pair<key_type, mapped_type>;
-    using hash_pair_type = std::pair<typename Hasher::hash_t, mapped_type>;
+    using hash_pair_type = std::pair<typename Hasher::hash_type, mapped_type>;
 
     const std::size_t run_id = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    auto ribbon_width = ::bit::size<Hasher::hash_t>();
+    auto ribbon_width = ::bit::size<Hasher::hash_type>();
     auto a = std::ceil(std::log2(ribbon_width));
     assert(a >= 0);
     auto b = 4 * a; // 2-bit variant
@@ -140,12 +144,12 @@ METHOD_HEADER::build(Iterator start, Iterator stop)
             [](const auto &a, const auto &b) {
                 return a.first == b.first;
             }
-        ) != end
+        ) != hashed_keys.cend()
     ) throw std::runtime_error("[Build] Hashes are not unique");
     
     do {
         layers.emplace_back();
-        hashed_keys = layers.back.build(run_id, hashed_keys, coefficients, results);
+        hashed_keys = layers.back.build(run_id, hashed_keys);
     } while(hashed_keys.size() != 0 and layers.size() < option_bundle.nlayers);
     assert(layers.size() <= option_bundle.nlayers);
     // if (layers.size() < option_bundle.nlayers) option_bundle.nlayers = layers.size(); // just use layers.size()
@@ -177,8 +181,8 @@ METHOD_HEADER::layer::build(
     m = (1 + option_bundle.epsilon) * pairs.size(); // m = (1+e)*n (previously called num_slots)
     m = ((m + ribbon_width - 1) / ribbon_width) * ribbon_width; // round up to next multiple of ribbon_width for interleaved storage
 
-    std::vector<typename Hasher::hash_t> coefficients(m);
-    std::vector<mapped_type> results(m);
+    std::vector<typename Hasher::hash_type> coefficients(m);
+    std::vector<ValueType> results(m);
     emem::external_memory_vector<hash_pair_type> bumped_items(option_bundle.max_ram, option_bundle.tmp_dir, util::get_name("bumped", run_id));
     const auto do_bump = [&coefficients, &results, &bumped_items](auto &vec) {
         for (auto [row, elem] : vec) {
@@ -193,14 +197,16 @@ METHOD_HEADER::layer::build(
 
     bool all_good = true;
     std::size_t prev_bucket = 0;
+    auto thresh = bumping::NONE;
+    auto last_cval = -1;
     std::vector<std::pair<std::size_t, hash_pair_type>> bump_cache;
-    for(auto itr = pairs.cbegin(); itr != pairs.cend(); ++itr, ++i) {
+    for(auto itr = pairs.cbegin(); itr != pairs.cend(); ++itr, ++itr) {
         auto [offset, bucket, cval, hash] = hash_to_bucket((*itr).first);
         if (bucket < prev_bucket) throw std::runtime_error("[build_layer] new bucket index < previous one");
-        if (bucket != last_bucket) { // moving to next bucket
-            if (thresh == bumping::NONE) bump_info[last_bucket] = thresh;
+        if (bucket != prev_bucket) { // moving to next bucket
+            if (thresh == bumping::NONE) bump_info[prev_bucket] = thresh;
             all_good = true;
-            last_bucket = bucket;
+            prev_bucket = bucket;
             thresh = bumping::NONE; // maximum == "no bumpage"
             last_cval = cval;
             bump_cache.clear();
@@ -217,7 +223,7 @@ METHOD_HEADER::layer::build(
             bump_cache.emplace_back(row, *itr);
         } else {
             assert(all_good);
-            if (option_bundle.layers == 1) return false; // bumping disabled, abort!
+            if (option_bundle.nlayers == 1) return false; // bumping disabled, abort!
             // if we got this far, this is the first failure in this bucket,
             // and we need to undo insertions with the same cval
             thresh = cval;
@@ -227,7 +233,7 @@ METHOD_HEADER::layer::build(
             bumped_items.push_back(*itr);
         }
     }
-    if (thresh == bumping::NONE) bump_info[last_bucket] = thresh; // set final threshold
+    if (thresh == bumping::NONE) bump_info[prev_bucket] = thresh; // set final threshold
     total_empty_slots += m - pairs.size() + bumped_items.size();
 
     // The final result is a (interleaved) matrix Z + bumping information and the last bumped elements
@@ -242,9 +248,9 @@ template <typename ValueType>
 std::optional<std::size_t>
 METHOD_HEADER::layer::insert(
     const std::size_t start,
-    const typename Hasher::hash_t ribbon_hash,
+    const typename Hasher::hash_type ribbon_hash,
     const ValueType value,
-    std::vector<typename Hasher::hash_t>& coefficients,
+    std::vector<typename Hasher::hash_type>& coefficients,
     std::vector<ValueType>& results
 ) 
 {
@@ -284,13 +290,13 @@ std::tuple<
     std::size_t, // offset
     std::size_t, // position inside the bucket
     typename METHOD_HEADER::bumping, // bump threshold
-    typename Hasher::hash_t // (re)hashed value (the key)
+    typename Hasher::hash_type // (re)hashed value (the key)
 > 
-METHOD_HEADER::layer::hash_to_bucket(typename Hasher::hash_t hkey, std::size_t m) const noexcept
+METHOD_HEADER::layer::hash_to_bucket(typename Hasher::hash_type hkey, std::size_t m) const noexcept
 {
     const auto hash = Hasher::hash(hkey, 0); // rehash for current run. IMPROVEMENT: maybe use a fast XOR rehasher
     assert(hash); // hash must contain at least one set bit for ribbon
-    const std::size_t start = toolbox::fastrange(hash, m - ::bit::size<Hasher::hash_t>() + 1);
+    const std::size_t start = toolbox::fastrange(hash, m - ::bit::size<Hasher::hash_type>() + 1);
     assert(bucket_size != 0); // just check if bucket size is initialized
     const std::size_t sortpos = start ^ (bucket_size - 1); // ???
 
@@ -306,10 +312,12 @@ METHOD_HEADER::layer::hash_to_bucket(typename Hasher::hash_t hkey, std::size_t m
 CLASS_HEADER
 template <typename ValueType>
 std::optional<ValueType>
-METHOD_HEADER::layer::at(const typename Hasher::hash_t hval) const noexcept
+METHOD_HEADER::layer::at(const typename Hasher::hash_type hval) const noexcept
 {
     // iss.PrefetchQuery(segment);
-    return Z.template at(hash_to_bucket(hval, m));
+    auto [offset, bucket, cval, hash] = hash_to_bucket(hval, m);
+    if (cval >= bump_info.at(bucket)) return std::nullopt; // this works since bumping threshold are assigned increasing integer codes (the enum)
+    return Z.template at<typename Hasher::hash_type, ValueType>(offset, hash);
 }
 
 CLASS_HEADER
@@ -317,9 +325,9 @@ template <typename KeyType, typename ValueType>
 ValueType 
 METHOD_HEADER::at(const KeyType& x) const noexcept
 {
-    const auto ribbon_width = ::bit::size<Hasher::hash_t>();
+    const auto ribbon_width = ::bit::size<Hasher::hash_type>();
     auto hash = Hasher::hash(x, option_bundle.seed);
-    std::option<ValueType> ret = std::nullopt;
+    std::optional<ValueType> ret = std::nullopt;
     std::size_t i = 0;
     while(!ret and i < layers.size()) {
         ret = layers.at(i).at(hash);
@@ -329,67 +337,67 @@ METHOD_HEADER::at(const KeyType& x) const noexcept
 }
 
 // General retrieval query a key from InterleavedSolutionStorage.
-template <typename InterleavedSolutionStorage, typename Hasher>
-std::pair<bool, typename InterleavedSolutionStorage::ResultRow>
-InterleavedRetrievalQuery(const typename HashTraits<Hasher>::mhc_or_key_t &key,
-                          const Hasher &hasher,
-                          const InterleavedSolutionStorage &iss) {
-    using Hash = typename Hasher::Hash;
-    using Index = typename InterleavedSolutionStorage::Index;
-    using CoeffRow = typename InterleavedSolutionStorage::CoeffRow;
-    using ResultRow = typename InterleavedSolutionStorage::ResultRow;
+// template <typename InterleavedSolutionStorage, typename Hasher>
+// std::pair<bool, typename InterleavedSolutionStorage::ResultRow>
+// InterleavedRetrievalQuery(const typename HashTraits<Hasher>::mhc_or_key_t &key,
+//                           const Hasher &hasher,
+//                           const InterleavedSolutionStorage &iss) {
+//     using Hash = typename Hasher::Hash;
+//     using Index = typename InterleavedSolutionStorage::Index;
+//     using CoeffRow = typename InterleavedSolutionStorage::CoeffRow;
+//     using ResultRow = typename InterleavedSolutionStorage::ResultRow;
 
-    static_assert(sizeof(Index) == sizeof(typename Hasher::Index),
-                  "must be same");
-    static_assert(sizeof(CoeffRow) == sizeof(typename Hasher::CoeffRow),
-                  "must be same");
+//     static_assert(sizeof(Index) == sizeof(typename Hasher::Index),
+//                   "must be same");
+//     static_assert(sizeof(CoeffRow) == sizeof(typename Hasher::CoeffRow),
+//                   "must be same");
 
-    constexpr bool debug = false;
-    constexpr auto kCoeffBits = static_cast<Index>(sizeof(CoeffRow) * 8U);
-    constexpr Index num_columns = InterleavedSolutionStorage::kResultBits;
+//     constexpr bool debug = false;
+//     constexpr auto kCoeffBits = static_cast<Index>(sizeof(CoeffRow) * 8U);
+//     constexpr Index num_columns = InterleavedSolutionStorage::kResultBits;
 
-    // don't query an empty ribbon, please
-    assert(iss.GetNumSlots() >= kCoeffBits);
-    const Hash hash = hasher.GetHash(key);
-    const Index start_slot = hasher.GetStart(hash, iss.GetNumStarts());
-    const Index bucket = hasher.GetBucket(start_slot);
+//     // don't query an empty ribbon, please
+//     assert(iss.GetNumSlots() >= kCoeffBits);
+//     const Hash hash = hasher.GetHash(key);
+//     const Index start_slot = hasher.GetStart(hash, iss.GetNumStarts());
+//     const Index bucket = hasher.GetBucket(start_slot);
 
-    const Index start_block_num = start_slot / kCoeffBits;
-    Index segment = start_block_num * num_columns;
-    iss.PrefetchQuery(segment);
+//     const Index start_block_num = start_slot / kCoeffBits;
+//     Index segment = start_block_num * num_columns;
+//     iss.PrefetchQuery(segment);
 
-    const Index val = hasher.GetIntraBucketFromStart(start_slot),
-                cval = hasher.Compress(val);
+//     const Index val = hasher.GetIntraBucketFromStart(start_slot),
+//                 cval = hasher.Compress(val);
 
-    if (CheckBumped(val, cval, bucket, hasher, iss)) {
-        sLOG << "Item was bumped, hash" << hash << "start" << start_slot
-             << "bucket" << bucket << "val" << val << cval << "thresh"
-             << (size_t)iss.GetMeta(bucket);
-        return std::make_pair(true, 0);
-    }
+//     if (CheckBumped(val, cval, bucket, hasher, iss)) {
+//         sLOG << "Item was bumped, hash" << hash << "start" << start_slot
+//              << "bucket" << bucket << "val" << val << cval << "thresh"
+//              << (size_t)iss.GetMeta(bucket);
+//         return std::make_pair(true, 0);
+//     }
 
-    sLOG << "Searching in bucket" << bucket << "start" << start_slot << "val"
-         << val << cval << "below thresh =" << (size_t)iss.GetMeta(bucket);
+//     sLOG << "Searching in bucket" << bucket << "start" << start_slot << "val"
+//          << val << cval << "below thresh =" << (size_t)iss.GetMeta(bucket);
 
-    const Index start_bit = start_slot % kCoeffBits;
-    const CoeffRow cr = hasher.GetCoeffs(hash);
+//     const Index start_bit = start_slot % kCoeffBits;
+//     const CoeffRow cr = GetCoeffs(hash);
 
-    ResultRow sr = 0;
-    const CoeffRow cr_left = cr << start_bit;
-    for (Index i = 0; i < num_columns; ++i) {
-        sr ^= rocksdb::BitParity(iss.GetSegment(segment + i) & cr_left) << i;
-    }
+//     ResultRow sr = 0;
+//     const CoeffRow cr_left = cr << start_bit;
+//     for (Index i = 0; i < num_columns; ++i) {
+//         sr ^= rocksdb::BitParity(iss.GetSegment(segment + i) & cr_left) << i;
+//     }
 
-    if (start_bit > 0) {
-        segment += num_columns;
-        const CoeffRow cr_right = cr >> (kCoeffBits - start_bit);
-        for (Index i = 0; i < num_columns; ++i) {
-            sr ^= rocksdb::BitParity(iss.GetSegment(segment + i) & cr_right) << i;
-        }
-    }
+//     if (start_bit > 0) {
+//         segment += num_columns;
+//         const CoeffRow cr_right = cr >> (kCoeffBits - start_bit);
+//         for (Index i = 0; i < num_columns; ++i) {
+//             sr ^= rocksdb::BitParity(iss.GetSegment(segment + i) & cr_right) << i;
+//         }
+//     }
 
-    return std::make_pair(false, sr);
-}
+//     return std::make_pair(false, sr);
+// }
 
 } // namespace ribbon
 

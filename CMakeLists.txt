@@ -54,8 +54,6 @@ set(TLX_SOURCES
 
 set(BURR_SOURCES
   src/constants.cpp
-  src/burr_config.cpp
-  src/sorter.cpp
   src/build.cpp
   src/BuRR.cpp
 )

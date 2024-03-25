@@ -6,13 +6,15 @@ CLASS_HEADER
 METHOD_HEADER::BuRR(const option_t& build_options)
     : 
     option_bundle(build_options), 
+    total_empty_slots(0),
     bucket_size(0),
     lower(0),
-    upper(0),
-    bump_info(bit::packed::vector<std::size_t>(2)) // 2-bit variant
-{
+    upper(0)
+{}
 
-}
+CLASS_HEADER
+METHOD_HEADER::layer::layer() : bump_info(bit::packed::vector<std::size_t>(2)) // 2-bit variant
+{}
 
 CLASS_HEADER
 std::tuple<std::size_t, std::size_t>
