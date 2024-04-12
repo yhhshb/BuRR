@@ -131,14 +131,14 @@ interleaved::at(const std::size_t offset, const KeyType hash) const noexcept
     ValueType retrieved = 0;
     std::size_t segment = start_block_num * value_width();
     for (std::size_t i = 0; i < value_width(); ++i) {
-        retrieved ^= bit::parity(data.template at<std::size_t>(segment + i) & cr_left) << i;
+        retrieved ^= bit::parity(static_cast<std::size_t>(data.at(segment + i)) & cr_left) << i;
     }
 
     if (start_bit > 0) {
         segment += value_width();
         const std::size_t cr_right = cr >> (ribbon_width - start_bit);
         for (std::size_t i = 0; i < value_width(); ++i) {
-            retrieved ^= bit::parity(data.at(segment + i) & cr_right) << i;
+            retrieved ^= bit::parity(static_cast<std::size_t>(data.at(segment + i)) & cr_right) << i;
         }
     }
     return retrieved;
