@@ -63,7 +63,7 @@ class BuRR // Standard IR data structure, 2-bit variant
         class layer
         {
             public:
-                layer();
+                layer(const METHOD_HEADER* parent);
                 
                 template <typename KeyType, typename ValueType>
                 emem::external_memory_vector<std::pair<KeyType, ValueType>> 
@@ -93,6 +93,7 @@ class BuRR // Standard IR data structure, 2-bit variant
                 bool
                 bumped(bumping info) const noexcept;
 
+                const METHOD_HEADER* parent;
                 bit::packed::vector<std::size_t> bump_info;
                 std::size_t m; // size of the layer
                 SolutionStorage Z; // the actual data
@@ -195,7 +196,10 @@ METHOD_HEADER::get_thresholds(std::size_t ribbon_width, double eps, std::size_t 
 };
 
 CLASS_HEADER
-METHOD_HEADER::layer::layer() : bump_info(bit::packed::vector<std::size_t>(2)) // 2-bit variant
+METHOD_HEADER::layer::layer(const METHOD_HEADER* p) 
+    : 
+    parent(p),
+    bump_info(bit::packed::vector<std::size_t>(2)) // 2-bit variant
 {}
 
 CLASS_HEADER
@@ -209,12 +213,12 @@ METHOD_HEADER::layer::build(
     using hash_pair_type = std::pair<KeyType, ValueType>;
     bump_info = bit::packed::vector<std::size_t>(2); // 2-bit thresholds
     const auto ribbon_width = ::bit::size<KeyType>(); // recomputed here to avoid passing one additional argument
-    m = (1 + option_bundle.epsilon) * pairs.size(); // m = (1+e)*n (previously called num_slots)
+    m = (1 + parent->option_bundle.epsilon) * pairs.size(); // m = (1+e)*n (previously called num_slots)
     m = ((m + ribbon_width - 1) / ribbon_width) * ribbon_width; // round up to next multiple of ribbon_width for interleaved storage
 
     std::vector<typename Hasher::hash_type> coefficients(m);
     std::vector<ValueType> results(m);
-    emem::external_memory_vector<hash_pair_type> bumped_items(option_bundle.max_ram, option_bundle.tmp_dir, util::get_name("bumped", run_id));
+    emem::external_memory_vector<hash_pair_type> bumped_items(parent->option_bundle.max_ram, parent->option_bundle.tmp_dir, util::get_name("bumped", run_id));
     const auto do_bump = [&coefficients, &results, &bumped_items](auto &vec) {
         for (auto [row, elem] : vec) {
             coefficients[row] = 0;
@@ -254,7 +258,7 @@ METHOD_HEADER::layer::build(
             bump_cache.emplace_back(row, *itr);
         } else {
             assert(all_good);
-            if (option_bundle.nlayers == 1) return false; // bumping disabled, abort!
+            if (parent->option_bundle.nlayers == 1) return false; // bumping disabled, abort!
             // if we got this far, this is the first failure in this bucket,
             // and we need to undo insertions with the same cval
             thresh = cval;
@@ -265,7 +269,7 @@ METHOD_HEADER::layer::build(
         }
     }
     if (thresh == bumping::NONE) bump_info[prev_bucket] = thresh; // set final threshold
-    total_empty_slots += m - pairs.size() + bumped_items.size();
+    parent->total_empty_slots += m - pairs.size() + bumped_items.size();
 
     // The final result is a (interleaved) matrix Z + bumping information and the last bumped elements
     // Z must depend on concrete types, independent of the template paramters
@@ -325,6 +329,7 @@ std::tuple<
 > 
 METHOD_HEADER::layer::hash_to_bucket(typename Hasher::hash_type hkey, std::size_t m) const noexcept
 {
+    const auto bucket_size = parent->bucket_size;
     const auto hash = Hasher::hash(hkey, 0); // rehash for current run. IMPROVEMENT: maybe use a fast XOR rehasher
     assert(hash); // hash must contain at least one set bit for ribbon
     const std::size_t start = toolbox::fastrange(hash, m - ::bit::size<Hasher::hash_type>() + 1);
@@ -334,8 +339,8 @@ METHOD_HEADER::layer::hash_to_bucket(typename Hasher::hash_type hkey, std::size_
     const std::size_t val = sortpos % bucket_size;
     bumping thr_type;
     if (val >= bucket_size) thr_type = bumping::NONE; // none bumped
-    else if (val > upper) thr_type = bumping::SOME; // some bumped
-    else if (val > lower) thr_type = bumping::MOST; // most bumped
+    else if (val > parent->upper) thr_type = bumping::SOME; // some bumped
+    else if (val > parent->lower) thr_type = bumping::MOST; // most bumped
     else thr_type = bumping::ALL; // all bumped
     return std::make_tuple(start, sortpos / bucket_size, thr_type, hash);
 }

@@ -55,7 +55,6 @@ set(TLX_SOURCES
 set(BURR_SOURCES
   src/constants.cpp
   src/build.cpp
-  src/BuRR.cpp
 )
 
 # add_library(BuRR ${BURR_SOURCES})
