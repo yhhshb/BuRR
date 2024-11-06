@@ -467,14 +467,14 @@ protected:
     void Serialize(const std::string &filename, uint8_t depth) {
         std::ofstream os(filename, std::ios::binary|std::ios::out|std::ios::trunc);
         if (!os.is_open())
-            throw file_open_error("unable to open file " + filename + " for writing");
+            throw std::runtime_error("unable to open file " + filename + " for writing");
         Serialize(os, depth);
     }
 
     void Deserialize(const std::string &filename, uint8_t depth) {
         std::ifstream is(filename, std::ios::binary|std::ios::in);
         if (!is.is_open())
-            throw file_open_error("unable to open file " + filename + " for reading");
+            throw std::runtime_error("unable to open file " + filename + " for reading");
         Deserialize(is, depth);
     }
 
