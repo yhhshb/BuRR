@@ -12,6 +12,7 @@
 #include "rocksdb/stop_watch.h"
 #include "storage.hpp"
 #include "thresh_compress.hpp"
+#include "serialize.hpp" // To be removed in future revision
 
 #include <iostream>
 #include <type_traits>
@@ -308,7 +309,7 @@ protected:
     // (De)Serialize methods below are only called on the top level
     virtual void SerializeIntern(std::ostream &os) {
         if constexpr (kUseCacheLineStorage) {
-            throw config_error("kUseCacheLineStorage not supported");
+            throw std::runtime_error("kUseCacheLineStorage not supported");
         } else if constexpr (kUseInterleavedSol) {
             sol_.SerializeIntern(os);
         } else {
@@ -320,7 +321,7 @@ protected:
     virtual void DeserializeIntern(std::istream &is, bool switchendian, uint64_t seed, uint32_t idx) {
         Index num_buckets = 0;
         if constexpr (kUseCacheLineStorage) {
-            throw config_error("kUseCacheLineStorage not supported");
+            throw std::runtime_error("kUseCacheLineStorage not supported");
         } else if constexpr (kUseInterleavedSol) {
             sol_.DeserializeIntern(is, switchendian);
             num_buckets = sol_.GetNumBuckets();
@@ -343,7 +344,7 @@ protected:
         os.exceptions(~std::ios::goodbit);
 
         if constexpr (kUseCacheLineStorage)
-            throw config_error("kUseCacheLineStorage not supported");
+            throw std::runtime_error("kUseCacheLineStorage not supported");
 
         os.write("BuRR", 4);
         uint16_t bom = 0xFEFF;
@@ -388,71 +389,71 @@ protected:
         is.exceptions(~std::ios::goodbit);
 
         if constexpr (kUseCacheLineStorage)
-            throw config_error("kUseCacheLineStorage not supported");
+            throw std::runtime_error("kUseCacheLineStorage not supported");
 
         char magic[4];
         is.read(magic, 4);
         if (strncmp(magic, "BuRR", 4))
-            throw parse_error("wrong magic number");
+            throw std::runtime_error("wrong magic number");
         uint16_t bom;
         is.read(reinterpret_cast<char *>(&bom), sizeof(uint16_t));
         bool switchendian = false;
         if (bom == 0xFFFE)
             switchendian = true;
         else if (bom != 0xFEFF)
-            throw parse_error("invalid endianness specification");
+            throw std::runtime_error("invalid endianness specification");
         uint16_t version = 0;
         is.read(reinterpret_cast<char *>(&version), sizeof(uint16_t));
         if (version != 0)
-            throw parse_error("invalid version number");
+            throw std::runtime_error("invalid version number");
 
         char tmp;
         is.read(&tmp, 1);
         if (tmp != sizeof(CoeffRow))
-            throw config_error("sizeof(CoeffRow) mismatch");
+            throw std::runtime_error("sizeof(CoeffRow) mismatch");
         is.read(&tmp, 1);
         if (tmp != sizeof(ResultRow))
-            throw config_error("sizeof(ResultRow) mismatch");
+            throw std::runtime_error("sizeof(ResultRow) mismatch");
         is.read(&tmp, 1);
         if (tmp != kResultBits)
-            throw config_error("kResultBits mismatch");
+            throw std::runtime_error("kResultBits mismatch");
         is.read(&tmp, 1);
         if (tmp != sizeof(Index))
-            throw config_error("sizeof(Index) mismatch");
+            throw std::runtime_error("sizeof(Index) mismatch");
         Index bucketsz;
         is.read(reinterpret_cast<char *>(&bucketsz), sizeof(Index));
         if (switchendian && !bswap_generic(bucketsz))
-            throw parse_error("error converting endianness");
+            throw std::runtime_error("error converting endianness");
         else if (bucketsz != kBucketSize)
-            throw config_error("kBucketSize mismatch");
+            throw std::runtime_error("kBucketSize mismatch");
         is.read(&tmp, 1);
         if (tmp != sizeof(Hash))
-            throw config_error("sizeof(Hash) mismatch");
+            throw std::runtime_error("sizeof(Hash) mismatch");
         is.read(&tmp, 1);
         if (tmp != static_cast<int>(kThreshMode))
-            throw config_error("kThreshMode mismatch");
+            throw std::runtime_error("kThreshMode mismatch");
         is.read(&tmp, 1);
         if ((tmp & 0x1) != kUseMultiplyShiftHash)
-            throw config_error("kUseMultiplyShiftHash mismatch");
+            throw std::runtime_error("kUseMultiplyShiftHash mismatch");
         else if (((tmp >> 1) & 0x1) != kIsFilter)
-            throw config_error("kIsFilter mismatch");
+            throw std::runtime_error("kIsFilter mismatch");
         else if (((tmp >> 2) & 0x1) != kFirstCoeffAlwaysOne)
-            throw config_error("kFirstCoeffAlwaysOne mismatch");
+            throw std::runtime_error("kFirstCoeffAlwaysOne mismatch");
         else if (((tmp >> 3) & 0x1) != kSparseCoeffs)
-            throw config_error("kSparseCoeffs mismatch");
+            throw std::runtime_error("kSparseCoeffs mismatch");
         else if (((tmp >> 4) & 0x1) != kUseInterleavedSol)
-            throw config_error("kUseInterleavedSol mismatch");
+            throw std::runtime_error("kUseInterleavedSol mismatch");
         else if (((tmp >> 5) & 0x1) != kUseMHC)
-            throw config_error("kUseMHC mismatch");
+            throw std::runtime_error("kUseMHC mismatch");
 
         uint8_t d;
         is.read(reinterpret_cast<char *>(&d), sizeof(uint8_t));
         if (d != depth)
-            throw config_error("depth mismatch");
+            throw std::runtime_error("depth mismatch");
         uint64_t seed;
         is.read(reinterpret_cast<char *>(&seed), sizeof(uint64_t));
         if (switchendian && !bswap_generic(seed))
-            throw parse_error("error converting endianness");
+            throw std::runtime_error("error converting endianness");
 
         // this has to call the overridden method in the child class so
         // all levels of the data structure are deserialized
