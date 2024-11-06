@@ -1,8 +1,6 @@
 #include <iostream>
 #include "../include/build.hpp"
 
-using namespace ribbon;
-
 int main(int argc, char* argv[])
 {
     auto build_parser = get_parser_build();

@@ -3,14 +3,14 @@
 #include "../include/interleaved.hpp"
 #include "../bundled/biolib/include/hash.hpp"
 
-namespace ribbon {
+using namespace retrieval::ribbon;
 
 option_t check_args(const argparse::ArgumentParser& parser);
 
 int build_main(const argparse::ArgumentParser& parser)
 {
     auto opts = check_args(parser);
-    BuRR<storage::interleaved, hash::hash64> rds(opts);
+    BuRR<threshold_t::TWOBITS, storage::interleaved, hash::hash64> rds(opts);
     // rds.build(start, stop);
     return 0;
 }
@@ -64,5 +64,3 @@ option_t check_args(const argparse::ArgumentParser& parser)
     if (opts.nlayers > 4) std::cerr << "Warning: are " << opts.nlayers << " layers really necessary?\n";
     return opts;
 }
-
-} // namespace ribbon

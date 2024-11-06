@@ -1,6 +1,6 @@
 #include "../include/interleaved.hpp"
 
-namespace ribbon::storage {
+namespace retrieval::ribbon::storage {
 
 interleaved::interleaved()
     : valwidth(0), data(0)
@@ -12,4 +12,4 @@ interleaved::value_width() const noexcept
     return valwidth;
 }
 
-} // namespace storage
+} // namespace retrieval::ribbon::storage

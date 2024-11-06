@@ -3,7 +3,7 @@
 #include <optional>
 #include "../bundled/biolib/include/packed_vector.hpp"
 
-namespace ribbon::storage {
+namespace retrieval::ribbon::storage {
 
 class interleaved
 {
@@ -144,4 +144,4 @@ interleaved::at(const std::size_t offset, const KeyType hash) const noexcept
     return retrieved;
 }
 
-} // namespace ribbon
+} // namespace retrieval::ribbon::storage
