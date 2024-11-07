@@ -13,7 +13,7 @@
 
 namespace ribbon {
 
-namespace {
+// namespace {
 template <typename Config>
 class MetaStorage {
 public:
@@ -157,7 +157,7 @@ protected:
     Index num_slots_ = 0, num_buckets_ = 0;
     std::unique_ptr<meta_t[]> meta_;
 };
-} // namespace
+// } // namespace
 
 template <typename Config>
 class BasicStorage : public MetaStorage<Config> {

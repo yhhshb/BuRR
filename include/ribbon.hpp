@@ -19,7 +19,7 @@
 
 namespace ribbon {
 
-namespace {
+// namespace {
 
 template <typename Config>
 // Base level filter is always *at least* 64-bit
@@ -505,7 +505,7 @@ protected:
     Hasher hasher_;
 };
 
-} // namespace
+// } // namespace
 
 template <uint8_t depth, typename Config>
 class ribbon_filter : public ribbon_base<Config> {

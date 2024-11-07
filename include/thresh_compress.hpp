@@ -10,7 +10,6 @@
 
 namespace ribbon {
 
-
 template <typename Config>
 class NormalThreshold : public Permuter<Config> {
 public:
@@ -119,7 +118,7 @@ protected:
     Index lower_, upper_;
 };
 
-namespace {
+// namespace {
 // xxhash3 for cuckoo table
 struct dysect_xxh3 {
     static constexpr std::string_view name = "xxhash3";
@@ -306,7 +305,7 @@ protected:
     std::unique_ptr<table_t> plus_ = nullptr;
 };
 
-} // namespace
+// } // namespace
 
 template <typename Config>
 class OnePlusBitThreshold
@@ -340,7 +339,7 @@ public:
     }
 };
 
-namespace {
+// namespace {
 template <ThreshMode mode, typename Config>
 struct ThreshChooser;
 
@@ -362,7 +361,7 @@ struct ThreshChooser<ThreshMode::twobit, Config> {
     using type = TwoBitThreshold<Config>;
 };
 
-} // namespace
+// } // namespace
 
 template <typename Config>
 using ChooseThreshold = typename ThreshChooser<Config::kThreshMode, Config>::type;

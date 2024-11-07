@@ -13,10 +13,10 @@
 
 namespace ribbon {
 
-namespace {
+// namespace {
 // for std::conditional_t<cond, ActualThing, DummyData>
 struct DummyData {};
-} // namespace
+// } // namespace
 
 // Based on Peter Dillinger / Facebook's rocksdb::ribbon::StandardHasher
 template <typename Config>
@@ -141,14 +141,14 @@ protected:
 };
 
 
-namespace {
+// namespace {
 // some large random primes for Knuth multiplicative hashing - more than should
 // ever be needed (if you need 10 recursive ribbons, you're doing it wrong)
 static constexpr std::array<uint64_t, 9> kHashFactors = {
     0x805A57654F4304C3, 0x8E54A33A76D524A9, 0x6F2CC7AB2F1EC959,
     0x9E34124D0877F827, 0x9BE5DFCD6933E6E1, 0xE000C949B34E31FD,
     0xB96A37021B8A394D, 0xFB9B6D45A37C6055, 0xEC63A51B4B89C7BF};
-} // namespace
+// } // namespace
 
 template <typename Config>
 class MHCHasher /* not derived */ {
@@ -282,7 +282,7 @@ protected:
     static constexpr ResultRow kResultRowMask = (1ul << kResultBits) - 1;
 };
 
-namespace {
+// namespace {
 template <bool mhc, typename Config>
 struct BaseHasherChooser;
 
@@ -299,7 +299,7 @@ struct BaseHasherChooser<false, Config> {
 template <typename Config>
 using ChooseBaseHasher =
     typename BaseHasherChooser<Config::kUseMHC, Config>::type;
-} // namespace
+// } // namespace
 
 template <typename Config>
 class SparseHasher : public ChooseBaseHasher<Config> {
@@ -397,7 +397,7 @@ public:
     }
 };
 
-namespace {
+// namespace {
 template <bool, typename>
 struct HasherChooser;
 
@@ -411,7 +411,7 @@ struct HasherChooser<false, Config> {
     using type = ChooseBaseHasher<Config>;
 };
 
-} // namespace
+// } // namespace
 
 template <typename Config>
 using ChooseHasher = typename HasherChooser<Config::kSparseCoeffs, Config>::type;
