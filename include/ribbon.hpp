@@ -12,7 +12,7 @@
 #include "rocksdb/stop_watch.h"
 #include "storage.hpp"
 #include "thresh_compress.hpp"
-#include "serialize.hpp" // To be removed in future revision
+#include "serialize.hpp"
 
 #include <iostream>
 #include <type_traits>

@@ -5,10 +5,11 @@
 
 #pragma once
 
-#include "burr_config.hpp"
-
 #include <cassert>
 #include <memory>
+
+#include "burr_config.hpp"
+#include "serialize.hpp"
 
 namespace ribbon {
 

@@ -1,3 +1,5 @@
+#pragma once
+
 /*
 This method should be replaced by biolib's own endianness-aware functions
 */
