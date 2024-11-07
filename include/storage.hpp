@@ -140,10 +140,10 @@ public:
         meta_ = std::make_unique<meta_t[]>(size);
         is.read(reinterpret_cast<char *>(meta_.get()), sizeof(meta_t) * size);
         if (switchendian && sizeof(meta_t) > 1) {
-            if (!bswap_type_supported<meta_t>())
-                throw std::runtime_error("error converting endianness");
+            // if (!bswap_type_supported<meta_t>())
+            //     throw std::runtime_error("error converting endianness");
             for (size_t i = 0; i < size; ++i) {
-                bswap_generic(meta_[i]);
+                assert(bswap_generic(meta_[i]));
             }
         }
     }
@@ -232,10 +232,10 @@ public:
         results_ = std::make_unique<ResultRow[]>(Super::num_slots_);
         is.read(reinterpret_cast<char *>(results_.get()), sizeof(ResultRow) * Super::num_slots_);
         if (switchendian && sizeof(ResultRow) > 1) {
-            if (!bswap_type_supported<ResultRow>())
-                throw parse_error("error converting endianness");
+            // if (!bswap_type_supported<ResultRow>())
+            //     throw parse_error("error converting endianness");
             for (Index i = 0; i < Super::num_slots_; ++i) {
-                bswap_generic(results_[i]);
+                assert(bswap_generic(results_[i]));
             }
         }
     }
@@ -306,12 +306,12 @@ public:
         data_ = std::make_unique<unsigned char[]>(size);
         is.read(reinterpret_cast<char*>(data_.get()), size);
         if (switchendian && sizeof(CoeffRow) > 1) {
-            if (!bswap_type_supported<CoeffRow>())
-                throw parse_error("error converting endianness");
+            // if (!bswap_type_supported<CoeffRow>())
+            //     throw parse_error("error converting endianness");
             for (Index i = 0; i < GetNumSegments(); ++i) {
                 // this could probably be made a bit more efficient
                 CoeffRow seg = GetSegment(i);
-                bswap_generic(seg);
+                assert(bswap_generic(seg));
                 SetSegment(i, seg);
             }
         }
