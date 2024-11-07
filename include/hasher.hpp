@@ -124,6 +124,11 @@ public:
         return in.second;
     }
 
+    // needed for serialization
+    inline uint64_t GetSeed() const {
+        return seed_;
+    }
+
 protected:
     uint64_t seed_;
     std::conditional_t<kUseMultiplyShiftHash, __uint128_t, DummyData> multiply_,
